@@ -12,5 +12,8 @@
     "electron-auto-update"
   ],
   "author": "Sandeep Vemula",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^5.0.5"
+  }
 }

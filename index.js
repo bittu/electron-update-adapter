@@ -1,42 +1,45 @@
 const { app, autoUpdater } = require('electron')
 const fs = require('fs')
+const events = require('events')
+const path = require('path')
 
 const { normalizeOpts } = require('./lib/normalizeopts')
-const { checkVersionUpdate } = require('./lib/versionheck')
-const { createServer, downloadDarwin, downloadWin32 } = require('./lib/httphelper')
+const { checkVersionUpdate } = require('./lib/versioncheck')
+const { createServer, downloadFiles } = require('./lib/httphelper')
 
 class UpdateAdapter extends events.EventEmitter {
   constructor() {
     super()
 
-    this.on('error', e => this.emit('error', e))
+    this.on('error', e => this.options.logger && this.options.logger.error(e))
 
     autoUpdater.on('error', e => this.emit('error', e));
 
-    autoUpdater.on('update-downloaded', () => {
+    autoUpdater.on('update-downloaded', _ => {
       const version = this.meta.version;
       this.options.logger.info(`New version ${version} has been downloaded`);
-      this.emit('download-complete', this.meta);
+      this.emit('update-downloaded', this.meta);
     });
   }
 
-  init(options) {
+  init = (options) => {
     this.options = normalizeOpts(options);
+    // console.log('UpdateAdapter initialized')
 
     // Return if we run not compiled application
-    // if (app.isPackaged === false || app.getName() === 'Electron') {
-    //   this.options.disabled = true;
-    //   return this;
-    // }
+    if (app.isPackaged === false || app.getName() === 'Electron') {
+      this.options.disabled = true;
+      return this;
+    }
 
-    if (this.options.checkOnStartUp) {
+    if (this.options.checkUpdateOnStart) {
       this.checkForUpdates();
     }
 
     return this;
   }
 
-  checkForUpdates() {
+  checkForUpdates = () => {
     const opt = this.options;
 
     if (opt.disabled) {
@@ -48,15 +51,15 @@ class UpdateAdapter extends events.EventEmitter {
       this.emit('error', 'You must set url before calling checkForUpdates()');
       return this;
     }
+    // console.log('UpdateAdapter checking for updates')
 
-    //noinspection JSUnresolvedFunction
     checkVersionUpdate(opt.url, opt.version)
       .then((update) => {
         if (update) {
           this.onUpdateAvailable(update);
         } else {
           opt.logger.debug && opt.logger.debug(
-            `Update for ${this.buildId} is not available`
+            `Update for ${process.platform}-${opt.version} is not available`
           );
           this.emit('update-not-available');
         }
@@ -66,10 +69,11 @@ class UpdateAdapter extends events.EventEmitter {
     return this
   }
 
-  onUpdateAvailable(update) {
+  onUpdateAvailable = (update) => {
     this.emit('update-available', update)
 
     this.meta = update;
+    // console.log('onUpdateVAialable', this.options.autoDownload)
 
     if (this.options.autoDownload) {
       this.downloadUpdate()
@@ -78,7 +82,7 @@ class UpdateAdapter extends events.EventEmitter {
     return this
   }
 
-  async downloadUpdate() {
+  downloadUpdate = async () => {
     if (!this.meta.update) {
       const msg = 'There is no metadata for update. Run checkForUpdates first.';
       this.emit('error', msg);
@@ -95,12 +99,16 @@ class UpdateAdapter extends events.EventEmitter {
     const cachePath = path.join(app.getPath('userData'), 'Cache');
     let updateFile, releasesFile;
 
+    try {
+      fs.mkdirSync(cachePath)
+    } catch(e) {}
+
     if (process.platform === 'darwin') {
       updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
       await downloadFiles([{
         url: this.meta.update,
         fileStream: fs.createWriteStream(updateFile)
-      }])
+      }], _ => this.emit('download-progress', progress))
     } else if (process.platform === 'win32') {
       releasesFile = path.join(cachePath, 'RELEASES');
       updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
@@ -110,7 +118,7 @@ class UpdateAdapter extends events.EventEmitter {
         }, {
           url: this.meta.update,
           fileStream: fs.createWriteStream(updateFile)
-        }])
+        }], _ => this.emit('download-progress', progress))
     }
     const server = createServer()
     function getServerUrl() {
@@ -121,7 +129,7 @@ class UpdateAdapter extends events.EventEmitter {
     const fileUrl = "/" + Date.now() + "-" + Math.floor(Math.random() * 9999) + ".zip"
     server.on('request', (req, res) => {
       const reqUrl = req.url;
-      console.log(`${reqUrl} requested`)
+      // console.log(`${reqUrl} requested`)
       if (reqUrl === '/') {
         const data = Buffer.from(`{ "url": "${getServerUrl()}${fileUrl}" }`)
         res.writeHead(200, {"Content-Type": "application/json", "Content-Length": data.length})
@@ -179,7 +187,7 @@ class UpdateAdapter extends events.EventEmitter {
       readStream.pipe(res)
     })
     server.listen(0, () => {
-      console.log('server started')
+      // console.log('server started')
       autoUpdater.setFeedURL({
         url: getServerUrl(),
         headers: {"Cache-Control": "no-cache"},
@@ -188,15 +196,11 @@ class UpdateAdapter extends events.EventEmitter {
     })
   }
 
-  onDownloadProgress(progress) {
-    this.emit('download-progress', progress)
-  }
-
-  quitAndInstall() {
+  quitAndInstall = () => {
     return autoUpdater.quitAndInstall();
   }
 
-  setFeedUrl(url) {
+  setFeedUrl = (url) => {
     this.options.url = url;
   }
 }
