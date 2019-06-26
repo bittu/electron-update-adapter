@@ -36,7 +36,6 @@ class UpdateAdapter extends EventEmitter {
       this.emit('error', 'initialized already');
       return this;
     }
-    // console.log('UpdateAdapter initialized')
 
     // Return if we run not compiled application
     if (app.isPackaged === false || app.getName() === 'Electron') {
@@ -120,44 +119,76 @@ class UpdateAdapter extends EventEmitter {
 
     try {
       fs.mkdirSync(cachePath)
-    } catch(e) {}
 
-    if (process.platform === 'darwin') {
-      updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
-      await downloadFiles([{
-        url: this.meta.update,
-        fileStream: fs.createWriteStream(updateFile)
-      }], progress => this.emit('download-progress', progress))
-    } else if (process.platform === 'win32') {
-      releasesFile = path.join(cachePath, 'RELEASES');
-      updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
-      await downloadFiles([{
-          url: this.meta.updateReleases,
-          fileStream: fs.createWriteStream(releasesFile)
-        }, {
+      if (process.platform === 'darwin') {
+        updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
+        await downloadFiles([{
           url: this.meta.update,
           fileStream: fs.createWriteStream(updateFile)
         }], progress => this.emit('download-progress', progress))
-    }
-    const server = createServer()
-    function getServerUrl() {
-      const address = server.address()
-      return `http://127.0.0.1:${address.port}`
-    }
-
-    const fileUrl = "/" + Date.now() + "-" + Math.floor(Math.random() * 9999) + ".zip"
-    server.on('request', (req, res) => {
-      const reqUrl = req.url;
-      // console.log(`${reqUrl} requested`)
-      if (reqUrl === '/') {
-        const data = Buffer.from(`{ "url": "${getServerUrl()}${fileUrl}" }`)
-        res.writeHead(200, {"Content-Type": "application/json", "Content-Length": data.length})
-        res.end(data)
-        return;
+      } else if (process.platform === 'win32') {
+        releasesFile = path.join(cachePath, 'RELEASES');
+        updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
+        await downloadFiles([{
+            url: this.meta.updateReleases,
+            fileStream: fs.createWriteStream(releasesFile)
+          }, {
+            url: this.meta.update,
+            fileStream: fs.createWriteStream(updateFile)
+          }], progress => this.emit('download-progress', progress))
       }
-      if (reqUrl === '/RELEASES') {
-        const relReadStream = fs.createReadStream(releasesFile)
-        relReadStream.on("error", error => {
+      const server = createServer()
+      function getServerUrl() {
+        const address = server.address()
+        return `http://127.0.0.1:${address.port}`
+      }
+
+      const fileUrl = "/" + Date.now() + "-" + Math.floor(Math.random() * 9999) + ".zip"
+      server.on('request', (req, res) => {
+        const reqUrl = req.url;
+        // console.log(`${reqUrl} requested`)
+        if (reqUrl === '/') {
+          const data = Buffer.from(`{ "url": "${getServerUrl()}${fileUrl}" }`)
+          res.writeHead(200, {"Content-Type": "application/json", "Content-Length": data.length})
+          res.end(data)
+          return;
+        }
+        if (reqUrl === '/RELEASES') {
+          const relReadStream = fs.createReadStream(releasesFile)
+          relReadStream.on("error", error => {
+            try {
+              res.end()
+            }
+            catch (e) {
+              console.warn(`cannot end response: ${e}`)
+            }
+          })
+
+          res.writeHead(200, {
+            "Content-Type": "text/plain",
+            "Content-Length": fs.statSync(releasesFile).size
+          })
+          relReadStream.pipe(res)
+          return;
+        }
+
+        if (!reqUrl.startsWith(fileUrl)) {
+          console.warn(`${reqUrl} requested, but not supported`)
+          res.writeHead(404)
+          res.end()
+          return
+        }
+
+        res.on("finish", () => {
+          try {
+            setImmediate(() => server.close())
+          } catch(e) {
+            console.log(e)
+          }
+        })
+
+        const readStream = fs.createReadStream(updateFile)
+        readStream.on("error", error => {
           try {
             res.end()
           }
@@ -167,52 +198,23 @@ class UpdateAdapter extends EventEmitter {
         })
 
         res.writeHead(200, {
-          "Content-Type": "text/plain",
-          "Content-Length": fs.statSync(releasesFile).size
+          "Content-Type": "application/zip",
+          "Content-Length": fs.statSync(updateFile).size
         })
-        relReadStream.pipe(res)
-        return;
-      }
-
-      if (!reqUrl.startsWith(fileUrl)) {
-        console.warn(`${reqUrl} requested, but not supported`)
-        res.writeHead(404)
-        res.end()
-        return
-      }
-
-      res.on("finish", () => {
-        try {
-          setImmediate(() => server.close())
-        } catch(e) {
-          console.log(e)
-        }
+        readStream.pipe(res)
       })
-
-      const readStream = fs.createReadStream(updateFile)
-      readStream.on("error", error => {
-        try {
-          res.end()
-        }
-        catch (e) {
-          console.warn(`cannot end response: ${e}`)
-        }
+      server.listen(0, () => {
+        // console.log('server started')
+        autoUpdater.setFeedURL({
+          url: getServerUrl(),
+          headers: {"Cache-Control": "no-cache"},
+        });
+        autoUpdater.checkForUpdates();
       })
-
-      res.writeHead(200, {
-        "Content-Type": "application/zip",
-        "Content-Length": fs.statSync(updateFile).size
-      })
-      readStream.pipe(res)
-    })
-    server.listen(0, () => {
-      // console.log('server started')
-      autoUpdater.setFeedURL({
-        url: getServerUrl(),
-        headers: {"Cache-Control": "no-cache"},
-      });
-      autoUpdater.checkForUpdates();
-    })
+    } catch(e) {
+      this.options.logger.error(e)
+      this.emit('error', 'Failed to download updates')
+    }
   }
 
   quitAndInstall = () => {
