@@ -1,15 +1,24 @@
 const { app, autoUpdater } = require('electron')
 const fs = require('fs')
-const events = require('events')
+const { EventEmitter } = require('events')
 const path = require('path')
 
+const { isSquirrelAction } = require('./lib/win32')
 const { normalizeOpts } = require('./lib/normalizeopts')
 const { checkVersionUpdate } = require('./lib/versioncheck')
 const { createServer, downloadFiles } = require('./lib/httphelper')
 
-class UpdateAdapter extends events.EventEmitter {
+class UpdateAdapter extends EventEmitter {
   constructor() {
     super()
+
+    this.options = {
+      logger: console,
+      checkUpdateOnStart: true,
+      autoDownload: true,
+      version: '',
+      empty: true
+    }
 
     this.on('error', e => this.options.logger && this.options.logger.error(e))
 
@@ -23,12 +32,22 @@ class UpdateAdapter extends events.EventEmitter {
   }
 
   init = (options) => {
-    this.options = normalizeOpts(options);
+    if (!this.options.empty) {
+      this.emit('error', 'initialized already');
+      return this;
+    }
     // console.log('UpdateAdapter initialized')
 
     // Return if we run not compiled application
     if (app.isPackaged === false || app.getName() === 'Electron') {
       this.options.disabled = true;
+      return this;
+    }
+
+    this.options = normalizeOpts(options);
+
+    if (isSquirrelAction()) {
+      this.emit('squirrel-event');
       return this;
     }
 
@@ -108,7 +127,7 @@ class UpdateAdapter extends events.EventEmitter {
       await downloadFiles([{
         url: this.meta.update,
         fileStream: fs.createWriteStream(updateFile)
-      }], _ => this.emit('download-progress', progress))
+      }], progress => this.emit('download-progress', progress))
     } else if (process.platform === 'win32') {
       releasesFile = path.join(cachePath, 'RELEASES');
       updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
@@ -118,7 +137,7 @@ class UpdateAdapter extends events.EventEmitter {
         }, {
           url: this.meta.update,
           fileStream: fs.createWriteStream(updateFile)
-        }], _ => this.emit('download-progress', progress))
+        }], progress => this.emit('download-progress', progress))
     }
     const server = createServer()
     function getServerUrl() {
