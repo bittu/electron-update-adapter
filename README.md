@@ -16,6 +16,8 @@ Yet another electron-updater which provides updates with custom updatechecker an
 ## Usage
 ```
 const updateAdapter = require('../electron-update-adapter')
+
+//Config
 const opts = {
   url: 'url for versions.json' // required
   logger: console // defaults to console
@@ -24,6 +26,20 @@ const opts = {
   version: '' // defaults to version from package.json
 }
 updateAdapter.init(opts)
+
+// Events
+updateAdapter.on('update-disabled', callback)
+updateAdapter.on('update-available', callback)
+updateAdapter.on('update-not-available', callback)
+updateAdapter.on('update-downloading', callback)
+updateAdapter.on('download-progress', callback)
+updateAdapter.on('update-downloaded', callback)
+
+// Methods
+updateAdapter.checkForUpdates()
+updateAdapter.downloadUpdate()
+updateAdapter.quitAndInstall()
+
 ```
 
 ### Sample versions.json

@@ -62,6 +62,7 @@ class UpdateAdapter extends EventEmitter {
 
     if (opt.disabled) {
       opt.logger.warn('Update is disabled');
+      this.emit('update-disabled')
       return this;
     }
 
@@ -115,20 +116,27 @@ class UpdateAdapter extends EventEmitter {
     // start server | init autoUpdater with local server url
 
     const cachePath = path.join(app.getPath('userData'), 'Cache');
+    const downloadPath = path.join(cachePath, 'downloads');
     let updateFile, releasesFile;
 
     try {
       fs.mkdirSync(cachePath)
+    } catch(e) {} // Silently ignore if folder already exists
 
+    try {
+      fs.mkdirSync(downloadPath)
+    } catch(e) {} // Silently ignore if folder already exists
+
+    try {
       if (process.platform === 'darwin') {
-        updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
+        updateFile = path.join(downloadPath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
         await downloadFiles([{
           url: this.meta.update,
           fileStream: fs.createWriteStream(updateFile)
         }], progress => this.emit('download-progress', progress))
       } else if (process.platform === 'win32') {
-        releasesFile = path.join(cachePath, 'RELEASES');
-        updateFile = path.join(cachePath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
+        releasesFile = path.join(downloadPath, 'RELEASES');
+        updateFile = path.join(downloadPath, this.meta.update.substr(this.meta.update.lastIndexOf('/') + 1))
         await downloadFiles([{
             url: this.meta.updateReleases,
             fileStream: fs.createWriteStream(releasesFile)
