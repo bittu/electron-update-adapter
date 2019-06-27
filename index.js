@@ -161,7 +161,7 @@ class UpdateAdapter extends EventEmitter {
           res.end(data)
           return;
         }
-        if (reqUrl === '/RELEASES') {
+        if (reqUrl.startsWith('/RELEASES')) {
           const relReadStream = fs.createReadStream(releasesFile)
           relReadStream.on("error", error => {
             try {
