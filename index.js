@@ -38,10 +38,10 @@ class UpdateAdapter extends EventEmitter {
     }
 
     // Return if we run not compiled application
-    if (app.isPackaged === false || app.getName() === 'Electron') {
-      this.options.disabled = true;
-      return this;
-    }
+    // if (app.isPackaged === false || app.getName() === 'Electron') {
+    //   this.options.disabled = true;
+    //   return this;
+    // }
 
     this.options = normalizeOpts(options);
 
@@ -180,8 +180,8 @@ class UpdateAdapter extends EventEmitter {
           return;
         }
 
-        if (!reqUrl.startsWith(fileUrl)) {
-          console.warn(`${reqUrl} requested, but not supported`)
+        if (!reqUrl.startsWith(fileUrl) && !reqUrl.startsWith('/' + path.basename(updateFile))) {
+          this.options.logger.warn(`${reqUrl} requested, but not supported`)
           res.writeHead(404)
           res.end()
           return

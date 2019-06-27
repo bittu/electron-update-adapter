@@ -1,6 +1,6 @@
 {
   "name": "electron-update-adapter",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Yet another electron-updater which provides updates with custom updatechecker and download progress supporting squirrel-windows and MacOS",
   "main": "index.js",
   "scripts": {
