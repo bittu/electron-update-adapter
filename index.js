@@ -38,10 +38,10 @@ class UpdateAdapter extends EventEmitter {
     }
 
     // Return if we run not compiled application
-    // if (app.isPackaged === false || app.getName() === 'Electron') {
-    //   this.options.disabled = true;
-    //   return this;
-    // }
+    if (app.isPackaged === false || app.getName() === 'Electron') {
+      this.options.disabled = true;
+      return this;
+    }
 
     this.options = normalizeOpts(options);
 
